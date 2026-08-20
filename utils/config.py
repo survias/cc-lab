@@ -63,6 +63,7 @@ ORIGINAL_DATABASE_PATH = _env_path(
 # en producción; el desarrollo local conserva su flujo actual.
 AUTH_REQUIRED = _env_flag("CC_LAB_AUTH_REQUIRED")
 AUTH_PROVIDER = os.environ.get("CC_LAB_AUTH_PROVIDER", "microsoft").strip() or "microsoft"
+ACCESS_PASSWORD = os.environ.get("CC_LAB_ACCESS_PASSWORD", "").strip()
 ALLOWED_EMAIL_DOMAINS = tuple(
     domain.strip().lower().lstrip("@")
     for domain in os.environ.get("CC_LAB_ALLOWED_EMAIL_DOMAINS", "").split(",")

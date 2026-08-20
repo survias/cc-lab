@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import hmac
+
 import streamlit as st
 
-from utils.config import ALLOWED_EMAIL_DOMAINS, AUTH_PROVIDER, AUTH_REQUIRED
+from utils.config import ACCESS_PASSWORD, ALLOWED_EMAIL_DOMAINS, AUTH_PROVIDER, AUTH_REQUIRED
+
+
+_ACCESS_GRANTED_KEY = "cc_lab_access_granted"
 
 
 def _user_value(name: str) -> str:
@@ -15,6 +20,25 @@ def _user_value(name: str) -> str:
 
 def require_authentication() -> None:
     """Protege la app con el OIDC configurado por Streamlit cuando se exige."""
+    if ACCESS_PASSWORD:
+        if not st.session_state.get(_ACCESS_GRANTED_KEY, False):
+            st.title("C&C Lab")
+            st.caption("Acceso restringido")
+            password = st.text_input("Contraseña", type="password")
+            if st.button("Ingresar", type="primary", icon=":material/login:"):
+                if hmac.compare_digest(password, ACCESS_PASSWORD):
+                    st.session_state[_ACCESS_GRANTED_KEY] = True
+                    st.rerun()
+                else:
+                    st.error("Contraseña incorrecta.")
+            st.stop()
+
+        with st.sidebar:
+            if st.button("Cerrar sesión", icon=":material/logout:", width="stretch"):
+                st.session_state.pop(_ACCESS_GRANTED_KEY, None)
+                st.rerun()
+        return
+
     if not AUTH_REQUIRED:
         return
 
