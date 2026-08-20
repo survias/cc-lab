@@ -1,0 +1,52 @@
+services:
+  app:
+    build:
+      context: ..
+    restart: unless-stopped
+    environment:
+      CC_LAB_DATABASE_PATH: /var/lib/cc-lab/cc_lab.sqlite
+      CC_LAB_BACKUP_DIR: /var/lib/cc-lab/backups
+      CC_LAB_REQUIRE_PERSISTENT_STORAGE: "true"
+      CC_LAB_APPLY_MIGRATIONS: "false"
+      CC_LAB_TRANSACTION_BACKUP_RETENTION: "25"
+      CC_LAB_AUTH_REQUIRED: "true"
+      CC_LAB_AUTH_PROVIDER: microsoft
+      CC_LAB_ALLOWED_EMAIL_DOMAINS: ${CC_LAB_ALLOWED_EMAIL_DOMAINS}
+    volumes:
+      - ${CC_LAB_DATA_DIR}:/var/lib/cc-lab
+      - ${CC_LAB_SECRETS_FILE}:/app/.streamlit/secrets.toml:ro
+    expose:
+      - "8501"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      CC_LAB_DOMAIN: ${CC_LAB_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  backup:
+    build:
+      context: ..
+    profiles: ["maintenance"]
+    entrypoint: ["python", "/app/scripts/backup_database.py"]
+    environment:
+      CC_LAB_DATABASE_PATH: /var/lib/cc-lab/cc_lab.sqlite
+      CC_LAB_BACKUP_MIRROR_DIR: /var/backups/cc-lab
+      CC_LAB_EXTERNAL_BACKUP_RETENTION: "30"
+    volumes:
+      - ${CC_LAB_DATA_DIR}:/var/lib/cc-lab:ro
+      - ${CC_LAB_OFFSITE_DIR}:/var/backups/cc-lab
+
+volumes:
+  caddy_data:
+  caddy_config:

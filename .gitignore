@@ -1,0 +1,34 @@
+# Sistema y Python
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Secretos y configuración local
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+deploy/.env
+deploy/secrets.toml
+
+# Datos locales que no forman parte de la publicación
+BD/backups/
+BD/sources/
+BD/external-backups/
+BD/H-P.xlsx
+BD/database2.csv
+BD/payments.csv
+BD/suppliers.csv
+BD/*.sqlite-wal
+BD/*.sqlite-shm
+BD/*.sqlite-journal
+
+# Runtime de despliegue y exportaciones
+deploy/runtime/
+exports/
+*.tmp
+
+# Se conserva expresamente BD/cc_lab.sqlite y los CSV de referencia que
+# todavía usa la versión actual: bidding, revenues y contratos.
