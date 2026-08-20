@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import streamlit as st
 
+from utils.auth import require_authentication
+
+require_authentication()
+
 from utils.catalogs import COST_CATEGORIES
 from utils.i18n import all_label, current_currency, text
 from utils.legacy_data import load_active_contracts, load_contract_invoices

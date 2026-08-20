@@ -5,6 +5,10 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
+from utils.auth import require_authentication
+
+require_authentication()
+
 from utils.catalogs import COST_CATEGORIES, document_type_label
 from utils.i18n import all_label, current_currency, payment_status_label, text
 from utils.legacy_data import filter_cost_control, load_cost_control, summarize_cost_centers

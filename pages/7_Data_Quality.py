@@ -5,6 +5,10 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
+from utils.auth import require_authentication
+
+require_authentication()
+
 from utils.i18n import all_label, current_currency, text
 from utils.legacy_data import load_cost_control
 from utils.monthly_import import import_monthly_files, preview_monthly_files

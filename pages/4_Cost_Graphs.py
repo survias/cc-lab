@@ -4,6 +4,10 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from utils.auth import require_authentication
+
+require_authentication()
+
 from utils.catalogs import COST_CATEGORIES, PAYMENT_STATUSES
 from utils.i18n import all_label, current_currency, payment_status_label, text
 from utils.legacy_data import filter_cost_control, load_cost_control
