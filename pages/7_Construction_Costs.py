@@ -236,39 +236,7 @@ def _table_style(frame: pd.DataFrame, highlight: bool = False):
     return frame.style.apply(row_style, axis=1).format(formats, na_rep="")
 
 
-st.markdown(
-    """
-    <style>
-    .stMainBlockContainer { max-width: 1480px; padding-top: 1.8rem; }
-    .cc-title-rule { width: 38px; height: 3px; background: #C74634; margin: .15rem 0 .7rem; }
-    .cc-meta { color: #707876; font-size: .78rem; margin-bottom: .8rem; }
-    .cc-kpis {
-        display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
-        border-top: 1px solid #D9DEDC; border-bottom: 1px solid #D9DEDC;
-        margin: .3rem 0 1rem;
-    }
-    .cc-kpi { padding: .9rem 1rem .95rem 0; min-width: 0; }
-    .cc-kpi + .cc-kpi { border-left: 1px solid #E2E6E4; padding-left: 1rem; }
-    .cc-kpi span { display: block; color: #727A78; font-size: .7rem; text-transform: uppercase; }
-    .cc-kpi strong { display: block; color: #202625; font-size: 1.42rem; line-height: 1.25; margin-top: .2rem; }
-    .cc-kpi small { display: block; color: #7A8280; font-size: .72rem; margin-top: .18rem; }
-    .cc-filter-heading {
-        color: #202625; font-size: .92rem; font-weight: 650;
-        margin: .15rem 0 .15rem;
-    }
-    .cc-filter-summary { color: #707876; font-size: .76rem; margin: -.15rem 0 .25rem; }
-    div[data-testid="stPlotlyChart"] { border-top: 1px solid #E3E7E5; padding-top: .1rem; }
-    @media (max-width: 850px) {
-        .cc-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .cc-kpi:nth-child(3) { border-left: 0; }
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
 page_heading(text("Costos de construcción", "Construction costs", "施工成本"))
-st.markdown('<div class="cc-title-rule"></div>', unsafe_allow_html=True)
 
 currency = current_currency()
 suffix = currency.lower()
@@ -566,22 +534,57 @@ with executive_tab:
     second_row[1].plotly_chart(_polish(if_chart, 330), width="stretch", config=CHART_CONFIG)
 
 with reports_tab:
+    table_unit = "MM$" if currency == "CLP" else text("mil UF", "thousand UF", "千 UF")
+    report_chart = make_subplots(specs=[[{"secondary_y": True}]])
+    report_chart.add_trace(
+        go.Bar(
+            x=report_finance["report_no"],
+            y=report_finance["net"] / divisor,
+            name=text("Costo neto", "Net cost", "净成本"),
+            marker={"color": GRAPHITE},
+        ),
+        secondary_y=False,
+    )
+    report_chart.add_trace(
+        go.Scatter(
+            x=report_finance["report_no"],
+            y=report_finance["observed_pct"],
+            name=text("Costo observado", "Observed cost", "有意见成本"),
+            mode="lines+markers",
+            line={"color": RED, "width": 2.2},
+        ),
+        secondary_y=True,
+    )
+    report_chart.update_yaxes(title_text=scale_label, secondary_y=False)
+    report_chart.update_yaxes(title_text="%", ticksuffix="%", range=[0, 105], showgrid=False, secondary_y=True)
+    report_chart.update_xaxes(dtick=1, title_text=text("Informe", "Report", "报告"))
+    report_chart.update_layout(
+        title=text("Costo y exposición por informe", "Cost and exposure by report", "按报告划分的成本与风险")
+    )
+    st.plotly_chart(_polish(report_chart, 330), width="stretch", config=CHART_CONFIG)
+
     report_table = pd.DataFrame(
         {
             text("Informe", "Report", "报告"): report_finance["report_no"].astype(int),
             text("Partidas", "Items", "项目"): report_finance["items"].astype(int),
-            text(f"Neto ({scale_label})", f"Net ({scale_label})", f"净额 ({scale_label})"): report_finance["net"] / divisor,
-            text(f"IVA ({scale_label})", f"VAT ({scale_label})", f"增值税 ({scale_label})"): report_finance["vat"] / divisor,
-            text(f"IVA recuperable ({scale_label})", f"Recoverable VAT ({scale_label})", f"可抵扣增值税 ({scale_label})"): report_finance["recoverable"] / divisor,
-            text(f"Por aclarar ({scale_label})", f"To clarify ({scale_label})", f"待核 ({scale_label})"): report_finance["vat_gap"] / divisor,
+            text("Neto", "Net", "净额"): report_finance["net"] / divisor,
+            text("IVA", "VAT", "增值税"): report_finance["vat"] / divisor,
+            text("IVA recuperable", "Recoverable VAT", "可抵扣增值税"): report_finance["recoverable"] / divisor,
+            text("Por aclarar", "To clarify", "待核"): report_finance["vat_gap"] / divisor,
             text("Costo observado", "Observed cost", "有意见成本"): report_finance["observed_pct"],
         }
     )
     amount_columns = report_table.columns[2:6]
     report_style = report_table.style.format(
-        {column: lambda value: _number(value, 1) for column in amount_columns}
+        {column: lambda value: f"{_number(value, 1)} {table_unit}" for column in amount_columns}
         | {report_table.columns[-1]: _percent}
-    ).set_properties(subset=[report_table.columns[-1]], **{"font-weight": "600"})
+    ).set_properties(
+        subset=[report_table.columns[0], report_table.columns[1]],
+        **{"text-align": "center"},
+    ).set_properties(
+        subset=[report_table.columns[-1]],
+        **{"font-weight": "600", "text-align": "center"},
+    ).bar(subset=[report_table.columns[-1]], color="#E8B0A8", vmin=0, vmax=100)
     st.dataframe(report_style, hide_index=True, width="stretch", height=520)
 
 with observations_tab:

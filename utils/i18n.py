@@ -25,7 +25,7 @@ def currency_selector() -> str:
 
 def language_selector() -> str:
     if st.session_state.get("app_language") not in LANGUAGE_LABELS:
-        st.session_state.app_language = "es"
+        st.session_state.app_language = "en"
     return st.sidebar.radio(
         "Idioma",
         options=list(LANGUAGE_LABELS),
@@ -37,8 +37,8 @@ def language_selector() -> str:
 
 
 def current_language() -> str:
-    language = st.session_state.get("app_language", "es")
-    return language if language in LANGUAGE_LABELS else "es"
+    language = st.session_state.get("app_language", "en")
+    return language if language in LANGUAGE_LABELS else "en"
 
 
 def current_currency() -> str:

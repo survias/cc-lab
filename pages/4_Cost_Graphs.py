@@ -10,9 +10,12 @@ from utils.legacy_data import filter_cost_control, load_cost_control
 from utils.ui_helpers import (
     PLOTLY_CONFIG,
     STATUS_COLORS,
+    filter_heading,
     format_clp_compact,
     format_uf,
     page_heading,
+    render_kpis,
+    result_summary,
     show_historical_data_error,
     style_chart,
 )
@@ -32,7 +35,9 @@ except Exception as exc:
 
 min_date = cost_control["DATE-F"].min().date()
 max_date = cost_control["DATE-F"].max().date()
-with st.expander(text("Filtros", "Filters", "筛选"), expanded=True):
+kpi_area = st.container()
+filter_heading(text("Filtros del análisis", "Analysis filters", "分析筛选"))
+with st.container():
     filters = st.columns([1.4, 1.4, 1])
     selected_categories = filters[0].multiselect(
         text("Grupos", "Groups", "组别"),
@@ -72,11 +77,23 @@ if filtered.empty:
 filtered["YEAR"] = filtered["DATE-F"].dt.year
 filtered["MONTH"] = filtered["DATE-F"].dt.to_period("M").dt.to_timestamp()
 
-metrics = st.columns(4)
-metrics[0].metric(text("Documentos", "Documents", "文档"), f"{len(filtered):,}".replace(",", "."))
-metrics[1].metric(text(f"Costo {currency}", f"Cost {currency}", f"成本 {currency}"), format_amount(filtered[net_column].sum()))
-metrics[2].metric(text("Pendientes", "Pending", "待处理"), f"{pending_count:,}".replace(",", "."))
-metrics[3].metric(text("Centros", "Cost centers", "成本中心"), filtered["SUBCATEGORY-F"].nunique())
+with kpi_area:
+    render_kpis(
+        [
+            (text(f"Costo {currency}", f"Cost {currency}", f"成本 {currency}"), format_amount(filtered[net_column].sum())),
+            (text("Documentos", "Documents", "文档"), f"{len(filtered):,}".replace(",", ".")),
+            (text("Centros", "Cost centers", "成本中心"), f"{filtered['SUBCATEGORY-F'].nunique():,.0f}".replace(",", ".")),
+            (text("Pendientes", "Pending", "待处理"), f"{pending_count:,}".replace(",", ".")),
+        ]
+    )
+
+result_summary(
+    text(
+        f"{filtered['DATE-F'].min():%d/%m/%Y} a {filtered['DATE-F'].max():%d/%m/%Y} · {filtered['SUPPLIER-F'].nunique()} proveedores",
+        f"{filtered['DATE-F'].min():%d/%m/%Y} to {filtered['DATE-F'].max():%d/%m/%Y} · {filtered['SUPPLIER-F'].nunique()} suppliers",
+        f"{filtered['DATE-F'].min():%Y/%m/%d} 至 {filtered['DATE-F'].max():%Y/%m/%d} · {filtered['SUPPLIER-F'].nunique()} 家供应商",
+    )
+)
 
 cost_tab, status_tab, table_tab = st.tabs(
     [

@@ -1,11 +1,24 @@
 from __future__ import annotations
 
+import plotly.express as px
 import streamlit as st
 
 from utils.catalogs import COST_CATEGORIES
 from utils.i18n import all_label, current_currency, text
 from utils.legacy_data import load_active_contracts, load_contract_invoices
-from utils.ui_helpers import format_clp_compact, format_uf, page_heading, show_historical_data_error
+from utils.ui_helpers import (
+    CHART_COLORS,
+    PLOTLY_CONFIG,
+    filter_heading,
+    format_clp_compact,
+    format_uf,
+    page_heading,
+    render_kpis,
+    result_summary,
+    short_business_name,
+    show_historical_data_error,
+    style_chart,
+)
 from utils.uf_data import get_current_uf_rate
 
 
@@ -22,7 +35,9 @@ except Exception as exc:
     show_historical_data_error(exc)
     st.stop()
 
-with st.expander(text("Filtros", "Filters", "筛选"), expanded=True):
+kpi_area = st.container()
+filter_heading(text("Filtros del portafolio", "Portfolio filters", "合同组合筛选"))
+with st.container():
     filters = st.columns(3)
     selected_categories = filters[0].multiselect(
         text("Grupos", "Groups", "组别"),
@@ -68,20 +83,72 @@ if selected_supplier is not None:
 additional_columns = ["AD1", "AD2", "AD3", "AD4", "AD5"]
 filtered = filtered.copy()
 filtered[["CON", *additional_columns]] *= conversion_factor
-metrics = st.columns(4)
-metrics[0].metric(text("Contratos", "Contracts", "合同"), f"{len(filtered):,}".replace(",", "."))
-metrics[1].metric(text("Proveedores", "Suppliers", "供应商"), filtered["SUPPLIER-F"].nunique())
-metrics[2].metric(text("Monto base", "Base amount", "基础金额"), format_amount(filtered["CON"].sum()))
-metrics[3].metric(text("Adicionales", "Additions", "附加金额"), format_amount(filtered[additional_columns].sum().sum()))
+filtered["ADICIONALES"] = filtered[additional_columns].sum(axis=1)
+filtered["MONTO_TOTAL"] = filtered["CON"] + filtered["ADICIONALES"]
+with kpi_area:
+    render_kpis(
+        [
+            (text("Monto total", "Total amount", "总金额"), format_amount(filtered["MONTO_TOTAL"].sum())),
+            (text("Monto base", "Base amount", "基础金额"), format_amount(filtered["CON"].sum())),
+            (text("Adicionales", "Additions", "附加金额"), format_amount(filtered["ADICIONALES"].sum())),
+            (text("Contratos", "Contracts", "合同"), f"{len(filtered):,}".replace(",", ".")),
+        ]
+    )
 
-contracts_tab, invoices_tab = st.tabs(
+result_summary(
+    text(
+        f"{filtered['SUPPLIER-F'].nunique()} proveedores · {filtered['SUBCATEGORY-F'].nunique()} centros de costo",
+        f"{filtered['SUPPLIER-F'].nunique()} suppliers · {filtered['SUBCATEGORY-F'].nunique()} cost centers",
+        f"{filtered['SUPPLIER-F'].nunique()} 家供应商 · {filtered['SUBCATEGORY-F'].nunique()} 个成本中心",
+    )
+)
+
+executive_tab, detail_tab, invoices_tab = st.tabs(
     [
-        text("Contratos", "Contracts", "合同"),
+        text("Ejecutivo", "Executive", "管理"),
+        text("Detalle", "Detail", "明细"),
         text("Documentos", "Documents", "文档"),
     ]
 )
 
-with contracts_tab:
+with executive_tab:
+    supplier_chart_data = (
+        filtered.assign(PROVEEDOR=filtered["SUPPLIER-F"].map(short_business_name))
+        .groupby("PROVEEDOR", as_index=False)["MONTO_TOTAL"]
+        .sum()
+        .nlargest(10, "MONTO_TOTAL")
+        .sort_values("MONTO_TOTAL")
+    )
+    supplier_chart = px.bar(
+        supplier_chart_data,
+        x="MONTO_TOTAL",
+        y="PROVEEDOR",
+        orientation="h",
+        title=text("Principales contratos por proveedor", "Top contracts by supplier", "按供应商划分的主要合同"),
+        labels={"MONTO_TOTAL": currency, "PROVEEDOR": ""},
+        color_discrete_sequence=[CHART_COLORS[0]],
+    )
+    st.plotly_chart(style_chart(supplier_chart, height=350, horizontal_legend=False), width="stretch", config=PLOTLY_CONFIG)
+    executive_display = filtered.copy()
+    executive_display["SUPPLIER-F"] = executive_display["SUPPLIER-F"].map(short_business_name)
+    executive_display["CENTRO"] = executive_display["SUBCATEGORY-F"].fillna(0).astype(int).astype(str) + " · " + executive_display["SUBCATEGORY_NAME"].fillna("")
+    st.dataframe(
+        executive_display[["SUPPLIER-F", "CONTRACT-F", "CENTRO", "CON", "ADICIONALES", "MONTO_TOTAL", "STATUS"]],
+        hide_index=True,
+        width="stretch",
+        height=440,
+        column_config={
+            "SUPPLIER-F": text("Proveedor", "Supplier", "供应商"),
+            "CONTRACT-F": text("Contrato", "Contract", "合同"),
+            "CENTRO": text("Centro de costo", "Cost center", "成本中心"),
+            "CON": st.column_config.NumberColumn(text("Monto base", "Base amount", "基础金额"), format=number_format),
+            "ADICIONALES": st.column_config.NumberColumn(text("Adicionales", "Additions", "附加金额"), format=number_format),
+            "MONTO_TOTAL": st.column_config.NumberColumn(text("Monto total", "Total amount", "总金额"), format=number_format),
+            "STATUS": text("Estado", "Status", "状态"),
+        },
+    )
+
+with detail_tab:
     display_columns = [
         "SUPPLIER-F",
         "RUT-F",
@@ -125,4 +192,17 @@ with invoices_tab:
     if linked.empty:
         st.info(text("Sin resultados", "No results", "无结果"))
     else:
-        st.dataframe(linked, hide_index=True, width="stretch", height=530)
+        linked_display = linked.rename(
+            columns={
+                "SUPPLIER-F": text("Proveedor", "Supplier", "供应商"),
+                "RUT-F": "RUT",
+                "CONTRACT": text("Contrato", "Contract", "合同"),
+                "INVOICE-F": text("Folio", "Number", "编号"),
+                "DOCUMENT TYPE": text("Tipo", "Type", "类型"),
+                "RELATION": text("Relación", "Relation", "关系"),
+                "CLAUSE": text("Cláusula", "Clause", "条款"),
+            }
+        )
+        supplier_column = text("Proveedor", "Supplier", "供应商")
+        linked_display[supplier_column] = linked_display[supplier_column].map(short_business_name)
+        st.dataframe(linked_display, hide_index=True, width="stretch", height=530)

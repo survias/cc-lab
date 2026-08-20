@@ -60,8 +60,10 @@ st.markdown(
     }
     [data-testid="stMetric"] {
         background: #ffffff;
-        border: 1px solid var(--cc-line);
-        border-radius: 6px;
+        border: 0;
+        border-top: 1px solid var(--cc-line);
+        border-bottom: 1px solid var(--cc-line);
+        border-radius: 0;
         padding: 0.8rem 0.9rem;
         min-height: 92px;
     }
@@ -80,7 +82,7 @@ st.markdown(
     }
     [data-testid="stDataFrame"] {
         border: 1px solid var(--cc-line);
-        border-radius: 6px;
+        border-radius: 2px;
         overflow: hidden;
     }
     .stButton > button, .stDownloadButton > button {
@@ -91,6 +93,13 @@ st.markdown(
         font-weight: 600;
         padding-left: 0.75rem;
         padding-right: 0.75rem;
+    }
+    [data-baseweb="tab-list"] {
+        border-bottom: 1px solid var(--cc-line);
+    }
+    div[data-testid="stPlotlyChart"] {
+        border-top: 1px solid #e3e7e5;
+        padding-top: 0.1rem;
     }
     [data-testid="stAlert"] {
         border-radius: 6px;
@@ -121,6 +130,62 @@ st.markdown(
         font-weight: 650;
         padding: 0.12rem 0.42rem;
     }
+    .cc-title-rule {
+        width: 38px;
+        height: 3px;
+        background: #c74634;
+        margin: 0.15rem 0 0.75rem;
+    }
+    .cc-meta {
+        color: #707876;
+        font-size: 0.78rem;
+        margin-bottom: 0.8rem;
+    }
+    .cc-kpis {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        border-top: 1px solid #d9dedc;
+        border-bottom: 1px solid #d9dedc;
+        margin: 0.3rem 0 1rem;
+    }
+    .cc-kpis-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .cc-kpis-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .cc-kpi {
+        padding: 0.9rem 1rem 0.95rem;
+        min-width: 0;
+    }
+    .cc-kpi:first-child { padding-left: 0; }
+    .cc-kpi + .cc-kpi { border-left: 1px solid #e2e6e4; }
+    .cc-kpi span {
+        display: block;
+        color: #727a78;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+    }
+    .cc-kpi strong {
+        display: block;
+        color: #202625;
+        font-size: 1.42rem;
+        line-height: 1.25;
+        margin-top: 0.2rem;
+    }
+    .cc-kpi small {
+        display: block;
+        color: #7a8280;
+        font-size: 0.72rem;
+        margin-top: 0.18rem;
+    }
+    .cc-filter-heading {
+        color: #202625;
+        font-size: 0.92rem;
+        font-weight: 650;
+        margin: 0.15rem 0 0.15rem;
+    }
+    .cc-filter-summary {
+        color: #707876;
+        font-size: 0.76rem;
+        margin: -0.1rem 0 0.35rem;
+    }
     [data-testid="stHeaderActionElements"], .stAppDeployButton {
         display: none;
     }
@@ -136,6 +201,10 @@ st.markdown(
             width: 100% !important;
             flex: 1 1 auto !important;
         }
+        .cc-kpis, .cc-kpis-3, .cc-kpis-5 {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .cc-kpi:nth-child(odd) { border-left: 0; }
     }
     </style>
     """,
@@ -163,11 +232,6 @@ pages = [
         icon=":material/payments:",
     ),
     st.Page(
-        "pages/4_Cost_Graphs.py",
-        title=text("Análisis", "Analysis", "分析"),
-        icon=":material/monitoring:",
-    ),
-    st.Page(
         "pages/5_Bidding_Costs.py",
         title=text("Bidding", "Bidding", "投标"),
         icon=":material/request_quote:",
@@ -186,11 +250,6 @@ pages = [
         "pages/7_Data_Quality.py",
         title=text("Calidad", "Data quality", "数据质量"),
         icon=":material/fact_check:",
-    ),
-    st.Page(
-        "pages/8_Data_Upload.py",
-        title=text("Fuentes", "Sources", "数据源"),
-        icon=":material/database:",
     ),
 ]
 

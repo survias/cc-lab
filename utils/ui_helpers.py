@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from html import escape
+import re
+import unicodedata
+
 import pandas as pd
 import streamlit as st
 
@@ -14,6 +18,7 @@ STATUS_COLORS = {
     "Pago sin documento": "#6E7472",
     "Revisar cruce": "#A94F45",
     "Nota de crédito": "#315B7D",
+    "Anulada por NC": "#78998D",
     "Sin clave": "#8A9290",
 }
 PLOTLY_CONFIG = {"displayModeBar": False, "responsive": True}
@@ -27,8 +32,41 @@ def apply_branding() -> None:
 def page_heading(title: str, caption: str | None = None) -> None:
     apply_branding()
     st.title(title)
+    st.markdown('<div class="cc-title-rule"></div>', unsafe_allow_html=True)
     if caption:
         st.caption(caption)
+
+
+def render_kpis(items: list[tuple[str, str] | tuple[str, str, str | None]]) -> None:
+    """Render the compact executive KPI strip used across the application."""
+    cards: list[str] = []
+    for item in items:
+        label, value = item[:2]
+        detail = item[2] if len(item) > 2 else None
+        detail_html = f"<small>{escape(str(detail))}</small>" if detail else ""
+        cards.append(
+            '<div class="cc-kpi">'
+            f"<span>{escape(str(label))}</span>"
+            f"<strong>{escape(str(value))}</strong>"
+            f"{detail_html}</div>"
+        )
+    st.markdown(
+        f'<div class="cc-kpis cc-kpis-{min(len(cards), 5)}">{"".join(cards)}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def filter_heading(title: str, summary: str | None = None) -> None:
+    st.markdown(f'<div class="cc-filter-heading">{escape(title)}</div>', unsafe_allow_html=True)
+    if summary:
+        st.markdown(
+            f'<div class="cc-filter-summary">{escape(summary)}</div>',
+            unsafe_allow_html=True,
+        )
+
+
+def result_summary(value: str) -> None:
+    st.markdown(f'<div class="cc-filter-summary">{escape(value)}</div>', unsafe_allow_html=True)
 
 
 def style_chart(figure, *, height: int = 360, horizontal_legend: bool = True):
@@ -88,6 +126,64 @@ def format_uf(value: float | int | None, decimals: int = 0) -> str:
 
 def format_currency(value: float | int | None, decimals: int = 0) -> str:
     return format_uf(value, decimals) if current_currency() == "UF" else format_clp_compact(value)
+
+
+def format_amount_cell(value: float | int | None, *, decimals: int = 1) -> str:
+    """Format a table amount with an explicit unit in every cell."""
+    if current_currency() == "UF":
+        return format_uf(value, decimals)
+    return format_clp(value)
+
+
+def short_business_name(value: object, max_length: int = 32) -> str:
+    original = str(value or text("Sin proveedor", "No supplier", "无供应商")).strip()
+    normalized = unicodedata.normalize("NFKD", original.upper())
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    known_names = (
+        ("CHINA RAILWAY", "CRCCI"),
+        ("MINISTERIO DE OBRAS PUBLICAS", "MOP"),
+        ("SOCIEDAD CONCESIONARIA RUTA 5 TALCA CHILLAN", "Survías"),
+        ("INGENIERIA GESTION Y CONTROL", "IGYC"),
+        ("KAPSCH TRAFFICCOM", "Kapsch"),
+        ("ALPHA INGENIEROS", "Alpha"),
+    )
+    for fragment, alias in known_names:
+        if fragment in normalized:
+            return alias
+    shortened = re.sub(
+        r"\b(SOCIEDAD ANONIMA|EMPRESA INDIVIDUAL DE RESPONSABILIDAD LIMITADA|"
+        r"LIMITADA|LTDA|SPA|S A|EIRL)\b\.?,?",
+        "",
+        original,
+        flags=re.IGNORECASE,
+    )
+    shortened = " ".join(shortened.split()).strip(" ,.-") or original
+    return shortened if len(shortened) <= max_length else f"{shortened[: max_length - 1].rstrip()}…"
+
+
+def executive_table_style(
+    frame: pd.DataFrame,
+    *,
+    formats: dict[str, object] | None = None,
+    center_columns: list[str] | tuple[str, ...] = (),
+    left_columns: list[str] | tuple[str, ...] = (),
+):
+    """Keep business tables visually consistent without changing their data."""
+    styler = frame.style.format(formats or {}, na_rep="—")
+    existing_center = [column for column in center_columns if column in frame.columns]
+    existing_left = [column for column in left_columns if column in frame.columns]
+    if existing_center:
+        styler = styler.set_properties(subset=existing_center, **{"text-align": "center"})
+    if existing_left:
+        styler = styler.set_properties(subset=existing_left, **{"text-align": "left"})
+    return styler.set_table_styles(
+        [
+            {
+                "selector": "th",
+                "props": "text-align: center; font-weight: 650; color: #4E5956;",
+            }
+        ]
+    )
 
 
 def dataframe_to_csv_bytes(frame: pd.DataFrame) -> bytes:

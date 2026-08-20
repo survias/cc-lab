@@ -17,9 +17,13 @@ from utils.legacy_data import load_cost_control
 from utils.ui_helpers import (
     CHART_COLORS,
     PLOTLY_CONFIG,
+    filter_heading,
     format_clp_compact,
     format_uf,
     page_heading,
+    render_kpis,
+    result_summary,
+    short_business_name,
     show_historical_data_error,
     style_chart,
 )
@@ -51,8 +55,10 @@ if not periods:
     st.info(text("Sin costos pagados.", "No paid costs.", "没有已付成本。"))
     st.stop()
 
+kpi_area = st.container()
+filter_heading(text("Filtros del análisis", "Analysis filters", "分析筛选"))
 period_labels = {period.strftime("%m/%Y"): period for period in periods}
-selector_column, download_column = st.columns([1, 2.2], vertical_alignment="bottom")
+selector_column, _ = st.columns([1, 2.2], vertical_alignment="bottom")
 with selector_column:
     selected_label = st.selectbox(
         text("Período", "Period", "期间"),
@@ -62,6 +68,11 @@ with selector_column:
 selected_period = period_labels[selected_label]
 database_mtime = DATABASE_PATH.stat().st_mtime_ns
 template_mtime = BUDGET_TEMPLATE_PATH.stat().st_mtime_ns
+export_key = (
+    database_mtime,
+    template_mtime,
+    selected_period.strftime("%Y-%m"),
+)
 
 try:
     comparison = budget_comparison(ledger, selected_period)
@@ -69,43 +80,21 @@ except Exception as exc:
     show_historical_data_error(exc)
     st.stop()
 
-with download_column:
-    export_key = (
-        database_mtime,
-        template_mtime,
-        selected_period.strftime("%Y-%m"),
-    )
-    if st.button(
-        text("Preparar Excel", "Prepare Excel", "生成 Excel"),
-        icon=":material/table_view:",
-        type="primary",
-        width="stretch",
-    ):
-        with st.spinner(text("Generando Excel...", "Generating Excel...", "正在生成 Excel...")):
-            st.session_state["budget_export"] = build_budget_workbook(
-                selected_period, ledger
-            )
-            st.session_state["budget_export_key"] = export_key
-    if st.session_state.get("budget_export_key") == export_key:
-        export = st.session_state["budget_export"]
-        st.download_button(
-            text("Descargar Cost vs Budget", "Download Cost vs Budget", "下载成本预算表"),
-            data=export.content,
-            file_name=export.filename,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            icon=":material/download:",
-            width="stretch",
-        )
-
 category_codes = set(comparison["REPORT_CATEGORY"].astype(int))
 category_options = {
     code: name for code, name in CATEGORY_NAMES.items() if code in category_codes
 }
-selected_categories = st.multiselect(
+selected_category = st.selectbox(
     text("Centros", "Cost centers", "成本中心"),
-    list(category_options),
-    default=list(category_options),
-    format_func=lambda code: f"{code} · {category_options[code]}",
+    [None, *category_options],
+    index=0,
+    format_func=lambda code: text("Todos", "All", "全部") if code is None else f"{code} · {category_options[code]}",
+)
+selected_categories = list(category_options) if selected_category is None else [selected_category]
+selection_label = (
+    text("Todos los centros", "All cost centers", "所有成本中心")
+    if selected_category is None
+    else f"{selected_category} · {category_options[selected_category]}"
 )
 filtered = comparison[comparison["REPORT_CATEGORY"].isin(selected_categories)].copy()
 if filtered.empty:
@@ -120,11 +109,23 @@ total_actual = filtered["ACTUAL_UF"].sum()
 balance = total_budget - total_actual
 execution = total_actual / total_budget if total_budget else 0
 
-metrics = st.columns(4)
-metrics[0].metric(text("Budget", "Budget", "预算"), metric_amount(total_budget))
-metrics[1].metric(text("Costo real", "Actual cost", "实际成本"), metric_amount(total_actual))
-metrics[2].metric(text("Saldo", "Balance", "余额"), metric_amount(balance))
-metrics[3].metric(text("Ejecución", "Execution", "执行率"), f"{execution:.1%}")
+with kpi_area:
+    render_kpis(
+        [
+            (text("Budget", "Budget", "预算"), metric_amount(total_budget)),
+            (text("Costo real", "Actual cost", "实际成本"), metric_amount(total_actual)),
+            (text("Saldo", "Balance", "余额"), metric_amount(balance)),
+            (text("Ejecución", "Execution", "执行率"), f"{execution:.1%}"),
+        ]
+    )
+
+result_summary(
+    text(
+        f"Corte {selected_label} · {selection_label}",
+        f"Through {selected_label} · {selection_label}",
+        f"截至 {selected_label} · {selection_label}",
+    )
+)
 
 trend_tab, centers_tab, suppliers_tab = st.tabs(
     [
@@ -263,6 +264,9 @@ with suppliers_tab:
         .reset_index()
         .sort_values(["REPORT_CATEGORY", "COSTO"], ascending=[True, False])
     )
+    suppliers["SUPPLIER-F"] = suppliers["SUPPLIER-F"].map(short_business_name)
+    suppliers["CENTRO"] = suppliers["SUBCATEGORY-F"].fillna(0).astype(int).astype(str) + " · " + suppliers["SUBCATEGORY_NAME"].fillna("")
+    suppliers = suppliers[["CATEGORY_NAME", "CENTRO", "RUT_COMPLETO", "SUPPLIER-F", "DOCUMENTOS", "COSTO"]]
     suppliers["COSTO"] = suppliers["COSTO"].map(format_amount)
     st.dataframe(
         suppliers,
@@ -270,13 +274,45 @@ with suppliers_tab:
         width="stretch",
         height=540,
         column_config={
-            "REPORT_CATEGORY": text("Grupo", "Group", "组别"),
             "CATEGORY_NAME": text("Nombre", "Name", "名称"),
-            "SUBCATEGORY-F": text("Centro", "Center", "中心"),
-            "SUBCATEGORY_NAME": text("Centro de costo", "Cost center", "成本中心"),
+            "CENTRO": text("Centro de costo", "Cost center", "成本中心"),
             "RUT_COMPLETO": "RUT",
             "SUPPLIER-F": text("Proveedor", "Supplier", "供应商"),
             "DOCUMENTOS": text("Docs.", "Docs", "文档"),
             "COSTO": text(f"Costo {currency}", f"Cost {currency}", f"成本 {currency}"),
         },
     )
+
+st.divider()
+export_text, export_action = st.columns([3.2, 1], vertical_alignment="bottom")
+with export_text:
+    st.caption(
+        text(
+            "Entregable oficial Cost vs Budget para el período seleccionado.",
+            "Official Cost vs Budget deliverable for the selected period.",
+            "所选期间的官方成本与预算交付文件。",
+        )
+    )
+with export_action:
+    if st.button(
+        text("Preparar Excel", "Prepare Excel", "生成 Excel"),
+        icon=":material/table_view:",
+        type="secondary",
+        width="content",
+        key="prepare_budget_excel",
+    ):
+        with st.spinner(text("Generando Excel...", "Generating Excel...", "正在生成 Excel...")):
+            st.session_state["budget_export"] = build_budget_workbook(
+                selected_period, ledger
+            )
+            st.session_state["budget_export_key"] = export_key
+    if st.session_state.get("budget_export_key") == export_key:
+        export = st.session_state["budget_export"]
+        st.download_button(
+            text("Descargar Excel", "Download Excel", "下载 Excel"),
+            data=export.content,
+            file_name=export.filename,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            icon=":material/download:",
+            width="content",
+        )

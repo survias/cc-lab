@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 from utils.catalogs import COST_CATEGORIES, document_type_label
@@ -17,13 +18,20 @@ from utils.queries import (
     get_raw_appearances,
 )
 from utils.ui_helpers import (
+    CHART_COLORS,
+    PLOTLY_CONFIG,
     dataframe_to_csv_bytes,
+    filter_heading,
     format_clp,
     format_clp_compact,
     format_uf,
     page_heading,
+    render_kpis,
+    result_summary,
+    short_business_name,
     show_database_error,
     show_historical_data_error,
+    style_chart,
 )
 
 
@@ -135,7 +143,9 @@ control_tab, database_tab, sii_tab = st.tabs(
 with control_tab:
     min_date = cost_control["DATE-F"].min().date()
     max_date = cost_control["DATE-F"].max().date()
-    with st.expander(text("Filtros", "Filters", "筛选"), expanded=True):
+    kpi_area = st.container()
+    filter_heading(text("Filtros del detalle", "Detail filters", "明细筛选"))
+    with st.container():
         filter_row = st.columns([1, 1, 1.1, 1.3])
         selected_categories = filter_row[0].multiselect(
             text("Grupos", "Groups", "组别"),
@@ -197,11 +207,42 @@ with control_tab:
     confirmed_costs = filtered_costs[filtered_costs["INCLUDED_IN_COST"]]
     pending_count = int((filtered_costs["REVIEW_REASON"] != "").sum())
 
-    metrics = st.columns(4)
-    metrics[0].metric(text("Registros confirmados", "Confirmed records", "已确认记录"), f"{len(confirmed_costs):,}".replace(",", "."))
-    metrics[1].metric(text(f"Costo {currency}", f"Cost {currency}", f"成本 {currency}"), format_amount(confirmed_costs[amount_column].sum()))
-    metrics[2].metric(text("Proveedores", "Suppliers", "供应商"), confirmed_costs["RUT_COMPLETO"].nunique())
-    metrics[3].metric(text("Pendientes", "Pending", "待处理"), f"{pending_count:,}".replace(",", "."))
+    with kpi_area:
+        render_kpis(
+            [
+                (text("Costo confirmado", "Confirmed cost", "已确认成本"), format_amount(confirmed_costs[amount_column].sum())),
+                (text("Documentos", "Documents", "文档"), f"{len(confirmed_costs):,}".replace(",", ".")),
+                (text("Proveedores", "Suppliers", "供应商"), f"{confirmed_costs['RUT_COMPLETO'].nunique():,.0f}".replace(",", ".")),
+                (text("Pendientes", "Pending", "待处理"), f"{pending_count:,}".replace(",", ".")),
+            ]
+        )
+
+    result_summary(
+        text(
+            f"{confirmed_costs['SUBCATEGORY-F'].nunique()} centros · {confirmed_costs['SUPPLIER-F'].nunique()} proveedores en la selección",
+            f"{confirmed_costs['SUBCATEGORY-F'].nunique()} centers · {confirmed_costs['SUPPLIER-F'].nunique()} suppliers in the selection",
+            f"当前选择中有 {confirmed_costs['SUBCATEGORY-F'].nunique()} 个中心 · {confirmed_costs['SUPPLIER-F'].nunique()} 家供应商",
+        )
+    )
+
+    if not confirmed_costs.empty:
+        center_chart_data = (
+            confirmed_costs.groupby("SUBCATEGORY_NAME", dropna=False)[amount_column]
+            .sum()
+            .nlargest(10)
+            .sort_values()
+            .reset_index()
+        )
+        center_chart = px.bar(
+            center_chart_data,
+            x=amount_column,
+            y="SUBCATEGORY_NAME",
+            orientation="h",
+            title=text("Centros con mayor costo", "Highest-cost centers", "成本最高的中心"),
+            labels={amount_column: currency, "SUBCATEGORY_NAME": ""},
+            color_discrete_sequence=[CHART_COLORS[0]],
+        )
+        st.plotly_chart(style_chart(center_chart, height=330, horizontal_legend=False), width="stretch", config=PLOTLY_CONFIG)
 
     view_labels = {
         "centers": text("Centros", "Cost centers", "成本中心"),
@@ -227,6 +268,7 @@ with control_tab:
             .reset_index()
             .sort_values("NETO", ascending=False)
         )
+        provider_summary["SUPPLIER-F"] = provider_summary["SUPPLIER-F"].map(short_business_name)
         st.dataframe(
             provider_summary,
             hide_index=True,

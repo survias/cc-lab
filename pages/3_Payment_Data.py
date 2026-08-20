@@ -12,9 +12,13 @@ from utils.ui_helpers import (
     PLOTLY_CONFIG,
     STATUS_COLORS,
     dataframe_to_csv_bytes,
+    filter_heading,
     format_clp_compact,
     format_uf,
     page_heading,
+    render_kpis,
+    result_summary,
+    short_business_name,
     show_historical_data_error,
     style_chart,
 )
@@ -109,7 +113,9 @@ except Exception as exc:
 min_date = cost_control["DATE-F"].min().date()
 max_date = cost_control["DATE-F"].max().date()
 
-with st.expander(text("Filtros", "Filters", "筛选"), expanded=True):
+kpi_area = st.container()
+filter_heading(text("Filtros del detalle", "Detail filters", "明细筛选"))
+with st.container():
     first_filter_row = st.columns([1, 1, 1.1, 1.3])
     selected_categories = first_filter_row[0].multiselect(
         text("Grupos", "Groups", "组别"),
@@ -188,11 +194,23 @@ credit_notes = filtered[
 ]
 pending = filtered[filtered["REVIEW_REASON"] != ""]
 
-metrics = st.columns(4)
-metrics[0].metric(text("Pagado total", "Total paid", "已支付总额"), format_amount(paid_total[total_column].sum()))
-metrics[1].metric(text("No pagado", "Unpaid", "未支付"), format_amount(unpaid[total_column].sum()))
-metrics[2].metric(text("Pagos sin documento", "Payments without document", "无凭证付款"), format_amount(payment_only[total_column].sum()))
-metrics[3].metric(text("Pendientes", "Pending", "待处理"), f"{len(pending):,}".replace(",", "."))
+with kpi_area:
+    render_kpis(
+        [
+            (text("Pagado total", "Total paid", "已支付总额"), format_amount(paid_total[total_column].sum())),
+            (text("No pagado", "Unpaid", "未支付"), format_amount(unpaid[total_column].sum())),
+            (text("Sin documento", "Without document", "无凭证"), format_amount(payment_only[total_column].sum())),
+            (text("Pendientes", "Pending", "待处理"), f"{len(pending):,}".replace(",", ".")),
+        ]
+    )
+
+result_summary(
+    text(
+        f"{len(filtered):,.0f} registros · {filtered['SUPPLIER-F'].nunique()} proveedores · {filtered['SUBCATEGORY-F'].nunique()} centros",
+        f"{len(filtered):,.0f} records · {filtered['SUPPLIER-F'].nunique()} suppliers · {filtered['SUBCATEGORY-F'].nunique()} centers",
+        f"{len(filtered):,.0f} 条记录 · {filtered['SUPPLIER-F'].nunique()} 家供应商 · {filtered['SUBCATEGORY-F'].nunique()} 个中心",
+    ).replace(",", ".")
+)
 
 summary_tab, paid_tab, unpaid_tab, payment_only_tab, review_tab, credit_tab, provider_tab = st.tabs(
     [

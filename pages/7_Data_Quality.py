@@ -24,7 +24,14 @@ from utils.reconciliation import (
     save_unpaid_confirmation,
 )
 from utils.uf_data import get_month_uf_rates, get_uf_coverage, update_uf_from_sii, years_requiring_update
-from utils.ui_helpers import format_clp_compact, format_uf, page_heading, show_database_error
+from utils.ui_helpers import (
+    format_clp_compact,
+    format_uf,
+    page_heading,
+    render_kpis,
+    result_summary,
+    show_database_error,
+)
 
 
 def _center_fields(centers: pd.DataFrame) -> tuple[int, int, str]:
@@ -113,9 +120,30 @@ try:
         st.cache_data.clear()
         ledger = load_cost_control()
     centers = get_cost_centers()
+    overview_quality = get_quality_summary(QualityFilters())
+    overview_credits = get_credit_note_decisions()
+    overview_uf = get_uf_coverage()
 except Exception as exc:
     show_database_error(exc)
     st.stop()
+
+pending_reconciliation = int((ledger["REVIEW_REASON"] != "").sum())
+pending_credit_notes = int(overview_credits["decision_type"].isna().sum()) if not overview_credits.empty else 0
+render_kpis(
+    [
+        (text("Por conciliar", "To reconcile", "待对账"), f"{pending_reconciliation:,.0f}".replace(",", ".")),
+        (text("Hallazgos abiertos", "Open issues", "未解决问题"), f"{int(overview_quality['open_count']):,.0f}".replace(",", ".")),
+        (text("Notas de crédito pendientes", "Pending credit notes", "待处理贷项通知单"), f"{pending_credit_notes:,.0f}".replace(",", ".")),
+        (text("UF actualizada", "UF updated", "UF 已更新"), overview_uf["latest_date"] or "—"),
+    ]
+)
+result_summary(
+    text(
+        f"{len(ledger):,.0f} registros conciliados · {len(centers)} centros activos",
+        f"{len(ledger):,.0f} reconciled records · {len(centers)} active centers",
+        f"{len(ledger):,.0f} 条对账记录 · {len(centers)} 个活动中心",
+    ).replace(",", ".")
+)
 
 upload_tab, reconcile_tab, credit_tab, uf_tab, history_tab, issues_tab = st.tabs(
     [
