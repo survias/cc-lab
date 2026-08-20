@@ -16,6 +16,7 @@ from utils.config import (
 from utils.database import query_dataframe
 from utils.payment_data import get_active_payments
 from utils.reconciliation import build_cost_control
+from utils.supplier_identity import supplier_key_series
 
 
 LEGACY_SOURCE_PATHS = {
@@ -123,6 +124,7 @@ def filter_cost_control(
     categories: list[int] | None = None,
     subcategories: list[int] | None = None,
     suppliers: list[str] | None = None,
+    supplier_keys: list[str] | None = None,
     statuses: list[str] | None = None,
 ) -> pd.DataFrame:
     filtered = frame.copy()
@@ -134,7 +136,12 @@ def filter_cost_control(
         filtered = filtered[filtered["CATEGORY-F"].isin(categories)]
     if subcategories:
         filtered = filtered[filtered["SUBCATEGORY-F"].isin(subcategories)]
-    if suppliers:
+    if supplier_keys:
+        filtered = filtered[
+            supplier_key_series(filtered).isin(supplier_keys)
+        ]
+    elif suppliers:
+        # Backward-compatible fallback for callers that have not migrated yet.
         filtered = filtered[filtered["SUPPLIER-F"].isin(suppliers)]
     if statuses:
         filtered = filtered[filtered["PAYMENT_STATUS"].isin(statuses)]

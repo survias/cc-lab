@@ -6,6 +6,7 @@ import streamlit as st
 from utils.catalogs import COST_CATEGORIES
 from utils.i18n import all_label, current_currency, text
 from utils.legacy_data import load_active_contracts, load_contract_invoices
+from utils.supplier_identity import supplier_filter_options, supplier_key_series
 from utils.ui_helpers import (
     CHART_COLORS,
     PLOTLY_CONFIG,
@@ -66,10 +67,16 @@ with st.container():
     supplier_source = contracts
     if selected_categories:
         supplier_source = supplier_source[supplier_source["CATEGORY-F"].isin(selected_categories)]
-    selected_supplier = filters[2].selectbox(
+    supplier_options = supplier_filter_options(
+        supplier_source,
+        rut_display_column="RUT-F",
+        label_func=short_business_name,
+    )
+    supplier_labels = dict(zip(supplier_options["KEY"], supplier_options["LABEL"]))
+    selected_supplier_key = filters[2].selectbox(
         text("Proveedor", "Supplier", "供应商"),
-        [None, *sorted(supplier_source["SUPPLIER-F"].dropna().unique())],
-        format_func=lambda value: all_label() if value is None else value,
+        [None, *supplier_options["KEY"].tolist()],
+        format_func=lambda value: all_label() if value is None else supplier_labels[value],
     )
 
 filtered = contracts.copy()
@@ -77,8 +84,8 @@ if selected_categories:
     filtered = filtered[filtered["CATEGORY-F"].isin(selected_categories)]
 if selected_subcategories:
     filtered = filtered[filtered["SUBCATEGORY-F"].isin(selected_subcategories)]
-if selected_supplier is not None:
-    filtered = filtered[filtered["SUPPLIER-F"] == selected_supplier]
+if selected_supplier_key is not None:
+    filtered = filtered[supplier_key_series(filtered).eq(selected_supplier_key)]
 
 additional_columns = ["AD1", "AD2", "AD3", "AD4", "AD5"]
 filtered = filtered.copy()
@@ -97,9 +104,9 @@ with kpi_area:
 
 result_summary(
     text(
-        f"{filtered['SUPPLIER-F'].nunique()} proveedores · {filtered['SUBCATEGORY-F'].nunique()} centros de costo",
-        f"{filtered['SUPPLIER-F'].nunique()} suppliers · {filtered['SUBCATEGORY-F'].nunique()} cost centers",
-        f"{filtered['SUPPLIER-F'].nunique()} 家供应商 · {filtered['SUBCATEGORY-F'].nunique()} 个成本中心",
+        f"{filtered['RUT_KEY'].nunique()} proveedores · {filtered['SUBCATEGORY-F'].nunique()} centros de costo",
+        f"{filtered['RUT_KEY'].nunique()} suppliers · {filtered['SUBCATEGORY-F'].nunique()} cost centers",
+        f"{filtered['RUT_KEY'].nunique()} 家供应商 · {filtered['SUBCATEGORY-F'].nunique()} 个成本中心",
     )
 )
 

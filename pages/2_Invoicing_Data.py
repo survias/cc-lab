@@ -9,6 +9,7 @@ import streamlit as st
 from utils.catalogs import COST_CATEGORIES, document_type_label
 from utils.i18n import all_label, current_currency, payment_status_label, text
 from utils.legacy_data import filter_cost_control, load_cost_control, summarize_cost_centers
+from utils.supplier_identity import supplier_filter_options
 from utils.queries import (
     DocumentFilters,
     get_document_filter_options,
@@ -176,9 +177,15 @@ with control_tab:
         supplier_source = available_subcategories
         if selected_subcategories:
             supplier_source = supplier_source[supplier_source["SUBCATEGORY-F"].isin(selected_subcategories)]
-        selected_suppliers = filter_row[2].multiselect(
+        supplier_options = supplier_filter_options(
+            supplier_source,
+            label_func=short_business_name,
+        )
+        supplier_labels = dict(zip(supplier_options["KEY"], supplier_options["LABEL"]))
+        selected_supplier_keys = filter_row[2].multiselect(
             text("Proveedores", "Suppliers", "供应商"),
-            sorted(supplier_source["SUPPLIER-F"].dropna().unique()),
+            supplier_options["KEY"].tolist(),
+            format_func=lambda value: supplier_labels[value],
             placeholder=all_label(),
         )
         with filter_row[3]:
@@ -202,7 +209,7 @@ with control_tab:
         end_date=end_date,
         categories=selected_categories,
         subcategories=selected_subcategories,
-        suppliers=selected_suppliers,
+        supplier_keys=selected_supplier_keys,
     )
     confirmed_costs = filtered_costs[filtered_costs["INCLUDED_IN_COST"]]
     pending_count = int((filtered_costs["REVIEW_REASON"] != "").sum())
@@ -219,9 +226,9 @@ with control_tab:
 
     result_summary(
         text(
-            f"{confirmed_costs['SUBCATEGORY-F'].nunique()} centros · {confirmed_costs['SUPPLIER-F'].nunique()} proveedores en la selección",
-            f"{confirmed_costs['SUBCATEGORY-F'].nunique()} centers · {confirmed_costs['SUPPLIER-F'].nunique()} suppliers in the selection",
-            f"当前选择中有 {confirmed_costs['SUBCATEGORY-F'].nunique()} 个中心 · {confirmed_costs['SUPPLIER-F'].nunique()} 家供应商",
+            f"{confirmed_costs['SUBCATEGORY-F'].nunique()} centros · {confirmed_costs['RUT_COMPLETO'].nunique()} proveedores en la selección",
+            f"{confirmed_costs['SUBCATEGORY-F'].nunique()} centers · {confirmed_costs['RUT_COMPLETO'].nunique()} suppliers in the selection",
+            f"当前选择中有 {confirmed_costs['SUBCATEGORY-F'].nunique()} 个中心 · {confirmed_costs['RUT_COMPLETO'].nunique()} 家供应商",
         )
     )
 

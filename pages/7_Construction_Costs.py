@@ -248,7 +248,6 @@ divisor, scale_label = _scale()
 try:
     active_import = get_active_construction_import()
     options = get_construction_filter_options()
-    overview_items = get_construction_items(ConstructionFilters())
 except Exception as exc:
     show_database_error(exc)
     st.stop()
@@ -257,32 +256,13 @@ if active_import is None:
     st.warning(text("Sin informes cargados", "No reports loaded", "未加载报告"))
     st.stop()
 
-if overview_items.empty:
+if not options["reports"]:
     st.info(text("Sin resultados", "No results", "无结果"))
     st.stop()
 
-net_amount = float(overview_items[net_col].sum())
-vat_amount = float(overview_items[vat_col].sum())
-recoverable_vat = float(overview_items[recoverable_col].sum())
-vat_gap = max(vat_amount - recoverable_vat, 0)
-vat_rate = 100 * recoverable_vat / vat_amount if vat_amount else 0
-report_count = int(overview_items["report_no"].nunique())
-
+kpi_placeholder = st.empty()
 st.markdown(
-    f"""
-    <div class="cc-meta">
-        {report_count} {text('informes', 'reports', '份报告')} ·
-        {len(overview_items)} {text('partidas', 'items', '项')} ·
-        {overview_items['supplier_name_reported'].nunique()} {text('proveedores', 'suppliers', '家供应商')}
-    </div>
-    <div class="cc-kpis">
-        <div class="cc-kpi"><span>{text('Costo neto', 'Net cost', '净成本')}</span><strong>{_amount(net_amount)}</strong></div>
-        <div class="cc-kpi"><span>{text('IVA presentado', 'Submitted VAT', '申报增值税')}</span><strong>{_amount(vat_amount)}</strong></div>
-        <div class="cc-kpi"><span>{text('IVA recuperable', 'Recoverable VAT', '可抵扣增值税')}</span><strong>{_amount(recoverable_vat)}</strong><small>{_percent(vat_rate)}</small></div>
-        <div class="cc-kpi"><span>{text('IVA por aclarar', 'VAT to clarify', '待核增值税')}</span><strong>{_amount(vat_gap)}</strong></div>
-    </div>
-    <div class="cc-filter-heading">{text('Filtros del detalle', 'Detail filters', '明细筛选')}</div>
-    """,
+    f'<div class="cc-filter-heading">{text("Filtros del detalle", "Detail filters", "明细筛选")}</div>',
     unsafe_allow_html=True,
 )
 
@@ -293,10 +273,19 @@ selected_reports = filter_row[0].multiselect(
     placeholder=all_label(),
     format_func=lambda value: f"{text('Informe', 'Report', '报告')} {value}",
 )
+construction_supplier_labels = {
+    supplier["supplier_key"]: (
+        f"{short_supplier(supplier['supplier_name'])} · {supplier['supplier_rut']}"
+        if supplier.get("supplier_rut")
+        else short_supplier(supplier["supplier_name"])
+    )
+    for supplier in options["suppliers"]
+}
 selected_suppliers = filter_row[1].multiselect(
     text("Proveedor", "Supplier", "供应商"),
-    options["suppliers"],
+    list(construction_supplier_labels),
     placeholder=all_label(),
+    format_func=lambda value: construction_supplier_labels[value],
 )
 selected_statuses = filter_row[2].multiselect(
     text("Estado", "Status", "状态"),
@@ -347,12 +336,38 @@ if items.empty:
     st.info(text("Sin resultados", "No results", "无结果"))
     st.stop()
 
+net_amount = float(items[net_col].sum())
+vat_amount = float(items[vat_col].sum())
+recoverable_vat = float(items[recoverable_col].sum())
+vat_gap = max(vat_amount - recoverable_vat, 0)
+vat_rate = 100 * recoverable_vat / vat_amount if vat_amount else 0
+report_count = int(items["report_no"].nunique())
+supplier_count = int(items["supplier_key"].nunique())
+
+with kpi_placeholder.container():
+    st.markdown(
+        f"""
+        <div class="cc-meta">
+            {report_count} {text('informes', 'reports', '份报告')} ·
+            {len(items)} {text('partidas', 'items', '项')} ·
+            {supplier_count} {text('proveedores', 'suppliers', '家供应商')}
+        </div>
+        <div class="cc-kpis">
+            <div class="cc-kpi"><span>{text('Costo neto', 'Net cost', '净成本')}</span><strong>{_amount(net_amount)}</strong></div>
+            <div class="cc-kpi"><span>{text('IVA presentado', 'Submitted VAT', '申报增值税')}</span><strong>{_amount(vat_amount)}</strong></div>
+            <div class="cc-kpi"><span>{text('IVA recuperable', 'Recoverable VAT', '可抵扣增值税')}</span><strong>{_amount(recoverable_vat)}</strong><small>{_percent(vat_rate)}</small></div>
+            <div class="cc-kpi"><span>{text('IVA por aclarar', 'VAT to clarify', '待核增值税')}</span><strong>{_amount(vat_gap)}</strong></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 st.markdown(
     f"""
     <div class="cc-filter-summary">
         {items['report_no'].nunique()} {text('informes', 'reports', '份报告')} ·
         {len(items)} {text('partidas', 'items', '项')} ·
-        {items['supplier_name_reported'].nunique()} {text('proveedores', 'suppliers', '家供应商')}
+        {supplier_count} {text('proveedores', 'suppliers', '家供应商')}
     </div>
     """,
     unsafe_allow_html=True,
@@ -431,7 +446,7 @@ with executive_tab:
 
     suppliers = (
         items.assign(Proveedor=items["supplier_name_reported"].map(short_supplier))
-        .groupby("Proveedor", as_index=False)
+        .groupby(["supplier_key", "Proveedor"], as_index=False)
         .agg(amount=(net_col, "sum"), items=("construction_item_id", "count"))
         .nlargest(9, "amount")
         .sort_values("amount")
@@ -511,15 +526,20 @@ with executive_tab:
     if_chart = px.bar(
         if_mix,
         x="share",
-        y=[text("Partidas", "Items", "项目")] * len(if_mix),
+        y="label",
         color="label",
         orientation="h",
-        text=if_mix["share"].map(_percent),
+        text=if_mix.apply(
+            lambda row: f"{_percent(row['share'])} · {int(row['items'])} {text('partidas', 'items', '项')}",
+            axis=1,
+        ),
         custom_data=["items"],
         color_discrete_map=if_colors,
     )
     if_chart.update_traces(
-        textposition="inside",
+        textposition="outside",
+        textfont={"size": 14, "color": INK},
+        cliponaxis=False,
         hovertemplate=(
             "%{fullData.name}<br>%{customdata[0]} "
             f"{text('partidas', 'items', '项')}<extra></extra>"
@@ -527,7 +547,8 @@ with executive_tab:
     )
     if_chart.update_layout(
         title=text("Estado de revisión IF", "IF review status", "IF 审查状态"),
-        barmode="stack",
+        showlegend=False,
+        bargap=0.35,
     )
     if_chart.update_xaxes(range=[0, 100], ticksuffix="%", title_text="")
     if_chart.update_yaxes(title_text="")

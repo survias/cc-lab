@@ -23,6 +23,23 @@ class ConstructionFilters:
     search_text: str = ""
 
 
+def _supplier_key_sql() -> str:
+    """Resolve supplier identity by alias RUT, linked RUT, then name fallback."""
+    return """
+        COALESCE(
+            a.supplier_rut,
+            (
+                SELECT MAX(COALESCE(d2.supplier_rut, p2.supplier_rut))
+                FROM construction_cost_matches m2
+                LEFT JOIN documents d2 ON d2.document_id = m2.document_id
+                LEFT JOIN payments p2 ON p2.payment_id = m2.payment_id
+                WHERE m2.construction_item_id = i.construction_item_id
+            ),
+            'NAME:' || COALESCE(i.supplier_name_reported, '')
+        )
+    """
+
+
 def _date_value(value: date | str) -> str:
     return value.isoformat() if isinstance(value, date) else str(value)
 
@@ -47,7 +64,7 @@ def build_construction_where(filters: ConstructionFilters) -> tuple[str, list[ob
         clauses.append("date(i.issue_date) <= date(?)")
         params.append(_date_value(filters.end_date))
     if filters.suppliers:
-        clause, values = _in_clause("i.supplier_name_reported", filters.suppliers)
+        clause, values = _in_clause(_supplier_key_sql(), filters.suppliers)
         clauses.append(clause)
         params.extend(values)
     if filters.folio.strip():
@@ -102,13 +119,29 @@ def get_construction_filter_options() -> dict[str, object]:
         """
     )
     suppliers = query_dataframe(
-        """
-        SELECT DISTINCT i.supplier_name_reported
+        f"""
+        SELECT DISTINCT
+               {_supplier_key_sql()} AS supplier_key,
+               COALESCE(a.canonical_name, i.supplier_name_reported) AS supplier_name,
+               CASE WHEN a.supplier_rut IS NOT NULL THEN
+                   a.supplier_rut || CASE WHEN COALESCE(a.supplier_dv, '') <> ''
+                       THEN '-' || a.supplier_dv ELSE '' END
+               ELSE COALESCE(
+                   (
+                       SELECT MAX(COALESCE(d2.supplier_rut, p2.supplier_rut))
+                       FROM construction_cost_matches m2
+                       LEFT JOIN documents d2 ON d2.document_id = m2.document_id
+                       LEFT JOIN payments p2 ON p2.payment_id = m2.payment_id
+                       WHERE m2.construction_item_id = i.construction_item_id
+                   ), ''
+               ) END AS supplier_rut
         FROM construction_cost_items i
         JOIN construction_imports ci
           ON ci.construction_import_id = i.construction_import_id
+        LEFT JOIN construction_supplier_aliases a
+          ON a.supplier_name_reported = i.supplier_name_reported
         WHERE ci.is_active = 1 AND i.supplier_name_reported IS NOT NULL
-        ORDER BY i.supplier_name_reported
+        ORDER BY supplier_name, supplier_key
         """
     )
     dates = query_dataframe(
@@ -131,7 +164,7 @@ def get_construction_filter_options() -> dict[str, object]:
     )
     return {
         "reports": reports["report_no"].astype(int).tolist(),
-        "suppliers": suppliers["supplier_name_reported"].astype(str).tolist(),
+        "suppliers": suppliers.to_dict("records"),
         "min_date": dates.at[0, "min_date"],
         "max_date": dates.at[0, "max_date"],
         "observation_classes": sorted(classifications["if_observation_class"].dropna().astype(str).unique()),
@@ -194,6 +227,11 @@ def get_construction_items(
                i.total_amount_uf, i.if_observation_raw, i.survias_response_raw,
                i.if_observation_class, i.support_type, i.reconciliation_status,
                a.supplier_rut AS linked_rut, a.canonical_name AS canonical_supplier,
+               {_supplier_key_sql()} AS supplier_key,
+               CASE WHEN a.supplier_rut IS NOT NULL THEN
+                   a.supplier_rut || CASE WHEN COALESCE(a.supplier_dv, '') <> ''
+                       THEN '-' || a.supplier_dv ELSE '' END
+               ELSE COALESCE(ms.matched_rut, '') END AS supplier_rut_display,
                COALESCE(ms.match_count, 0) AS match_count, ms.match_statuses,
                ms.match_methods, ms.matched_rut, ms.matched_supplier,
                ms.linked_documents, ms.linked_payment_dates,
@@ -237,7 +275,7 @@ def get_construction_metrics(filters: ConstructionFilters) -> dict[str, float | 
                COALESCE(SUM(i.net_amount_uf), 0) AS net_amount_uf,
                COALESCE(SUM(i.vat_amount_uf), 0) AS vat_amount_uf,
                COALESCE(SUM(i.total_amount_uf), 0) AS total_amount_uf,
-               COUNT(DISTINCT i.supplier_name_reported) AS supplier_count,
+               COUNT(DISTINCT {_supplier_key_sql()}) AS supplier_count,
                SUM(CASE WHEN i.invoice_key IS NULL THEN 1 ELSE 0 END) AS without_folio_count,
                SUM(CASE WHEN i.if_observation_class = 'OBSERVED' THEN 1 ELSE 0 END)
                    AS observed_count,
@@ -269,6 +307,8 @@ def get_construction_metrics(filters: ConstructionFilters) -> dict[str, float | 
         FROM construction_cost_items i
         JOIN construction_imports ci
           ON ci.construction_import_id = i.construction_import_id
+        LEFT JOIN construction_supplier_aliases a
+          ON a.supplier_name_reported = i.supplier_name_reported
         {where_sql}
         """,
         params,
@@ -284,7 +324,7 @@ def get_construction_report_summary(filters: ConstructionFilters) -> pd.DataFram
                COUNT(*) AS item_count,
                MIN(i.issue_date) AS first_issue_date,
                MAX(i.issue_date) AS last_issue_date,
-               COUNT(DISTINCT i.supplier_name_reported) AS supplier_count,
+               COUNT(DISTINCT {_supplier_key_sql()}) AS supplier_count,
                COALESCE(SUM(i.net_amount_clp), 0) AS net_amount_clp,
                COALESCE(SUM(i.vat_amount_clp), 0) AS vat_amount_clp,
                COALESCE(SUM(i.total_amount_clp), 0) AS total_amount_clp,
@@ -322,6 +362,8 @@ def get_construction_report_summary(filters: ConstructionFilters) -> pd.DataFram
         FROM construction_cost_items i
         JOIN construction_imports ci
           ON ci.construction_import_id = i.construction_import_id
+        LEFT JOIN construction_supplier_aliases a
+          ON a.supplier_name_reported = i.supplier_name_reported
         {where_sql}
         GROUP BY i.report_no
         ORDER BY i.report_no
@@ -334,7 +376,8 @@ def get_construction_supplier_summary(filters: ConstructionFilters) -> pd.DataFr
     where_sql, params = build_construction_where(filters)
     return query_dataframe(
         f"""
-        SELECT i.supplier_name_reported,
+        SELECT {_supplier_key_sql()} AS supplier_key,
+               COALESCE(a.canonical_name, i.supplier_name_reported) AS supplier_name_reported,
                COUNT(*) AS item_count,
                COUNT(DISTINCT i.report_no) AS report_count,
                GROUP_CONCAT(DISTINCT i.report_no) AS reports,
@@ -363,9 +406,11 @@ def get_construction_supplier_summary(filters: ConstructionFilters) -> pd.DataFr
         FROM construction_cost_items i
         JOIN construction_imports ci
           ON ci.construction_import_id = i.construction_import_id
+        LEFT JOIN construction_supplier_aliases a
+          ON a.supplier_name_reported = i.supplier_name_reported
         {where_sql}
-        GROUP BY i.supplier_name_reported
-        ORDER BY net_amount_uf DESC, i.supplier_name_reported
+        GROUP BY {_supplier_key_sql()}, COALESCE(a.canonical_name, i.supplier_name_reported)
+        ORDER BY net_amount_uf DESC, supplier_name_reported
         """,
         params,
     )

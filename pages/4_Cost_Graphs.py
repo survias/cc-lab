@@ -89,9 +89,9 @@ with kpi_area:
 
 result_summary(
     text(
-        f"{filtered['DATE-F'].min():%d/%m/%Y} a {filtered['DATE-F'].max():%d/%m/%Y} · {filtered['SUPPLIER-F'].nunique()} proveedores",
-        f"{filtered['DATE-F'].min():%d/%m/%Y} to {filtered['DATE-F'].max():%d/%m/%Y} · {filtered['SUPPLIER-F'].nunique()} suppliers",
-        f"{filtered['DATE-F'].min():%Y/%m/%d} 至 {filtered['DATE-F'].max():%Y/%m/%d} · {filtered['SUPPLIER-F'].nunique()} 家供应商",
+        f"{filtered['DATE-F'].min():%d/%m/%Y} a {filtered['DATE-F'].max():%d/%m/%Y} · {filtered['RUT_COMPLETO'].nunique()} proveedores",
+        f"{filtered['DATE-F'].min():%d/%m/%Y} to {filtered['DATE-F'].max():%d/%m/%Y} · {filtered['RUT_COMPLETO'].nunique()} suppliers",
+        f"{filtered['DATE-F'].min():%Y/%m/%d} 至 {filtered['DATE-F'].max():%Y/%m/%d} · {filtered['RUT_COMPLETO'].nunique()} 家供应商",
     )
 )
 

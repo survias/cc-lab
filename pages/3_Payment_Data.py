@@ -8,6 +8,7 @@ from utils.catalogs import COST_CATEGORIES, PAYMENT_STATUSES
 from utils.i18n import all_label, current_currency, payment_status_label, text
 from utils.legacy_data import filter_cost_control, load_cost_control, summarize_cost_centers
 from utils.payment_data import get_active_payment_summary
+from utils.supplier_identity import supplier_filter_options, supplier_key_series
 from utils.ui_helpers import (
     PLOTLY_CONFIG,
     STATUS_COLORS,
@@ -144,9 +145,15 @@ with st.container():
     supplier_source = subcategory_source
     if selected_subcategories:
         supplier_source = supplier_source[supplier_source["SUBCATEGORY-F"].isin(selected_subcategories)]
-    selected_suppliers = first_filter_row[2].multiselect(
+    supplier_options = supplier_filter_options(
+        supplier_source,
+        label_func=short_business_name,
+    )
+    supplier_labels = dict(zip(supplier_options["KEY"], supplier_options["LABEL"]))
+    selected_supplier_keys = first_filter_row[2].multiselect(
         text("Proveedores", "Suppliers", "供应商"),
-        sorted(supplier_source["SUPPLIER-F"].dropna().unique()),
+        supplier_options["KEY"].tolist(),
+        format_func=lambda value: supplier_labels[value],
         placeholder=all_label(),
     )
     with first_filter_row[3]:
@@ -176,7 +183,7 @@ filtered = filter_cost_control(
     end_date=end_date,
     categories=selected_categories,
     subcategories=selected_subcategories,
-    suppliers=selected_suppliers,
+    supplier_keys=selected_supplier_keys,
     statuses=selected_statuses,
 )
 
@@ -206,9 +213,9 @@ with kpi_area:
 
 result_summary(
     text(
-        f"{len(filtered):,.0f} registros · {filtered['SUPPLIER-F'].nunique()} proveedores · {filtered['SUBCATEGORY-F'].nunique()} centros",
-        f"{len(filtered):,.0f} records · {filtered['SUPPLIER-F'].nunique()} suppliers · {filtered['SUBCATEGORY-F'].nunique()} centers",
-        f"{len(filtered):,.0f} 条记录 · {filtered['SUPPLIER-F'].nunique()} 家供应商 · {filtered['SUBCATEGORY-F'].nunique()} 个中心",
+        f"{len(filtered):,.0f} registros · {filtered['RUT_COMPLETO'].nunique()} proveedores · {filtered['SUBCATEGORY-F'].nunique()} centros",
+        f"{len(filtered):,.0f} records · {filtered['RUT_COMPLETO'].nunique()} suppliers · {filtered['SUBCATEGORY-F'].nunique()} centers",
+        f"{len(filtered):,.0f} 条记录 · {filtered['RUT_COMPLETO'].nunique()} 家供应商 · {filtered['SUBCATEGORY-F'].nunique()} 个中心",
     ).replace(",", ".")
 )
 
@@ -286,12 +293,20 @@ with credit_tab:
     render_documents(credit_notes)
 
 with provider_tab:
-    provider_options = sorted(filtered["SUPPLIER-F"].dropna().unique())
-    if not provider_options:
+    provider_options = supplier_filter_options(
+        filtered,
+        label_func=short_business_name,
+    )
+    if provider_options.empty:
         st.info(text("Sin resultados", "No results", "无结果"))
     else:
-        provider = st.selectbox(text("Proveedor", "Supplier", "供应商"), provider_options)
-        provider_data = filtered[filtered["SUPPLIER-F"] == provider]
+        provider_labels = dict(zip(provider_options["KEY"], provider_options["LABEL"]))
+        provider = st.selectbox(
+            text("Proveedor", "Supplier", "供应商"),
+            provider_options["KEY"].tolist(),
+            format_func=lambda value: provider_labels[value],
+        )
+        provider_data = filtered[supplier_key_series(filtered).eq(provider)]
         provider_metrics = st.columns(4)
         provider_metrics[0].metric(text("Documentos", "Documents", "文档"), len(provider_data))
         provider_metrics[1].metric(
