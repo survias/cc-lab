@@ -39,9 +39,6 @@ docker compose --env-file .env up -d --build app caddy
 El servicio `app` contiene exactamente un proceso Streamlit. Caddy obtiene y renueva HTTPS. El
 acceso se valida mediante OIDC y, opcionalmente, por dominio de correo.
 
-Para una publicación temporal sin OIDC puede definirse `CC_LAB_ACCESS_PASSWORD`. Esta barrera
-protege toda la navegación y debe reemplazarse por Microsoft Entra ID en la operación definitiva.
-
 ### Respaldo externo y rotación
 
 Ejecutar diariamente desde cron o el programador del host:
