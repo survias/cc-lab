@@ -10,10 +10,6 @@ import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
-from utils.auth import require_authentication
-
-require_authentication()
-
 from utils.construction_data import (
     ConstructionFilters,
     get_active_construction_import,

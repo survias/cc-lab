@@ -4,10 +4,6 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from utils.auth import require_authentication
-
-require_authentication()
-
 from utils.budget_report import (
     CATEGORY_NAMES,
     available_actual_months,

@@ -4,10 +4,6 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from utils.auth import require_authentication
-
-require_authentication()
-
 from utils.i18n import all_label, current_currency, text
 from utils.legacy_data import load_cost_control, summarize_cost_centers
 from utils.ui_helpers import (

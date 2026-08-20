@@ -2,10 +2,6 @@ from __future__ import annotations
 
 import streamlit as st
 
-from utils.auth import require_authentication
-
-require_authentication()
-
 from utils.i18n import text
 from utils.legacy_data import source_inventory
 from utils.config import DATABASE_PATH
